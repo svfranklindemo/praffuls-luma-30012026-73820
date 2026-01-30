@@ -97,8 +97,8 @@ async function fetchProducts(path) {
     if (!path) return [];
     // For AEM parameterized queries, use semicolon syntax: ;_path=value
     const baseUrl = isAuthorEnvironment()
-      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
-      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?";
+      ? window.location.origin + "/graphql/execute.json/luma3/menproductspagelister;"
+      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=" + window.location.origin + "&";
     const url = `${baseUrl}_path=${path}`;
     const resp = await fetch(url, {
       method: "GET",
