@@ -1,0 +1,56 @@
+[
+  {
+    "id": "main",
+    "components": [
+      "section"
+    ]
+  },
+   {
+    "id": "section",
+    "components": [
+      "button",
+      "cards",
+      "carousel",
+      "columns",
+      "contentfragment",
+      "category-products-lister",
+      "product-detail",
+      "user-registration",
+      "dm-asset",
+      "dm-template",
+      "fragment",
+      "hero",
+      "iframe",
+      "image",
+      "search",
+      "teaser",
+      "text",
+      "title",
+      "video"
+    ]
+  },
+  {
+    "id": "cards",
+    "components": [
+      "card"
+    ]
+  },
+  {
+    "id": "columns",
+    "components": [
+      "column"
+    ]
+  },
+  {
+    "id": "column",
+    "components": [
+      "button",
+      "dm-asset",
+      "dm-template",
+      "image",
+      "text",      
+      "title",
+      "video"
+    ]
+  }
+]

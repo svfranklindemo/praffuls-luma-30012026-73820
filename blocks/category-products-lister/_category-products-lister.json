@@ -1,0 +1,48 @@
+{
+  "definitions": [
+    {
+      "title": "Category Products Lister",
+      "id": "category-products-lister",
+      "plugins": {
+        "xwalk": {
+          "page": {
+            "resourceType": "core/franklin/components/block/v1/block",
+            "template": {
+              "name": "Category Products Lister",
+              "model": "category-products-lister"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "category-products-lister",
+      "fields": [
+        {
+          "component": "aem-content",
+          "name": "folder",
+          "label": "Products Folder (Content Fragments)",
+          "multi": false,
+          "validation": { "rootPath": "/content/dam" }
+        },
+        {
+          "component": "aem-tag",
+          "name": "cq:tags",
+          "label": "Tags",
+          "valueType": "string",
+          "rootPath": "/content/cq:tags/lumaproducts"
+        }
+      ]
+    }
+  ],
+  "filters": [
+    {
+      "id": "category-products-lister",
+      "components": []
+    }
+  ]
+}
+
+

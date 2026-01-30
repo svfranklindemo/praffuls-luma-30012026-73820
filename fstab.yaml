@@ -1,0 +1,5 @@
+mountpoints:
+   /:
+     url: "https://author-p121371-e1189853.adobeaemcloud.com/bin/franklin.delivery/svfranklindemo/praffuls-luma-02012026-62552/main"
+     type: "markup"
+     suffix: ".html"
