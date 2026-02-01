@@ -71,14 +71,20 @@ function buildCard(item, isAuthor) {
   return card;
 }
 
-async function fetchProducts(path) {
+/**
+ * Fetches products from legacy GraphQL query for /dam/luma3/ paths
+ * No filtering applied - maintains exact backward compatibility
+ * @param {string} path - Folder path to fetch products from
+ * @returns {Promise<Array>} Array of product items
+ */
+async function fetchLegacyProducts(path) {
   try {
     if (!path) return [];
 
     const baseUrl = isAuthorEnvironment()
-    ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
-    : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?";
-  const url = `${baseUrl}_path=${path}`;
+      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
+      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?";
+    const url = `${baseUrl}_path=${path}`;
 
     const resp = await fetch(url, {
       method: 'GET',
@@ -88,10 +94,56 @@ async function fetchProducts(path) {
       },
     });
     const json = await resp.json();
-    return json?.data?.productsModelList?.items || [];
+    const items = json?.data?.productsModelList?.items || [];
+    
+    return items;
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("Category Products Lister: fetch error", e);
+    console.error("Category Products Lister (Legacy): fetch error", e);
+    return [];
+  }
+}
+
+/**
+ * Fetches products with category filtering at GraphQL level
+ * For new category-based implementations
+ * @param {string} path - Folder path to fetch products from
+ * @param {string|string[]} categoryFilter - Category tag(s) to filter by (optional)
+ * @returns {Promise<Array>} Array of product items
+ */
+async function fetchCategoryFilteredProducts(path, categoryFilter = null) {
+  try {
+    if (!path) return [];
+
+    const baseUrl = isAuthorEnvironment()
+      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/categoryFilteredProductsLister;"
+      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/categoryFilteredProductsLister?";
+    
+    // Build URL with path and category parameters
+    let url = `${baseUrl}_path=${path}`;
+    if (categoryFilter) {
+      // Normalize category filter to comma-separated string
+      const categoryParam = Array.isArray(categoryFilter) 
+        ? categoryFilter.join(',') 
+        : categoryFilter;
+      url += `&category=${encodeURIComponent(categoryParam)}`;
+    }
+
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+      },
+    });
+    const json = await resp.json();
+    const items = json?.data?.productsModelList?.items || [];
+    
+    // No client-side filtering needed - GraphQL handles it
+    return items;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("Category Products Lister (Category Filtered): fetch error", e);
     return [];
   }
 }
@@ -146,7 +198,7 @@ export default async function decorate(block) {
     folderHref = folderHref.replace(/\.html$/, "");
   }
 
-  // Extract tags - for Universal Editor they'll be in data attributes
+  // Extract tags from block configuration - these will be used for filtering (new demos only)
   const tags = block.dataset?.["cqTags"] || cfg?.tags || cfg?.["cq:tags"] || "";
 
   // Clear author table
@@ -158,7 +210,18 @@ export default async function decorate(block) {
   grid.className = "cpl-grid";
   block.append(grid);
 
-  const items = await fetchProducts(folderHref);
+  // Check if this is a legacy Luma3 demo (backward compatibility)
+  const isLegacyLuma3 = folderHref && folderHref.includes('/dam/luma3/');
+  
+  // Fetch products with appropriate method
+  let items;
+  if (isLegacyLuma3) {
+    // Legacy Luma3: Use folder-based query without any filtering (backward compatibility)
+    items = await fetchLegacyProducts(folderHref);
+  } else {
+    // New implementation: Use category-filtered query with backend filtering
+    items = await fetchCategoryFilteredProducts(folderHref, tags);
+  }
   if (!items || items.length === 0) {
     const empty = document.createElement("p");
     empty.className = "cpl-empty";
