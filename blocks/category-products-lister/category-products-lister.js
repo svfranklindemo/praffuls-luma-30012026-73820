@@ -72,12 +72,12 @@ function buildCard(item, isAuthor) {
 }
 
 /**
- * Fetches products from legacy GraphQL query for /dam/luma3/ paths
- * No filtering applied - maintains exact backward compatibility
+ * Fetches products from GraphQL and optionally filters by category tags
  * @param {string} path - Folder path to fetch products from
+ * @param {string|string[]} categoryFilter - Category tag(s) to filter by (optional)
  * @returns {Promise<Array>} Array of product items
  */
-async function fetchLegacyProducts(path) {
+async function fetchProducts(path, categoryFilter = null) {
   try {
     if (!path) return [];
 
@@ -94,58 +94,58 @@ async function fetchLegacyProducts(path) {
       },
     });
     const json = await resp.json();
-    const items = json?.data?.productsModelList?.items || [];
+    let items = json?.data?.productsModelList?.items || [];
+    
+    // Apply client-side category filtering if specified
+    if (categoryFilter && items.length > 0) {
+      items = filterByCategory(items, categoryFilter);
+    }
     
     return items;
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("Category Products Lister (Legacy): fetch error", e);
+    console.error("Category Products Lister: fetch error", e);
     return [];
   }
 }
 
 /**
- * Fetches products with category filtering at GraphQL level
- * For new category-based implementations
- * @param {string} path - Folder path to fetch products from
- * @param {string|string[]} categoryFilter - Category tag(s) to filter by (optional)
- * @returns {Promise<Array>} Array of product items
+ * Filters products by category tags
+ * @param {Array} products - Array of product items
+ * @param {string|string[]} categoryFilter - Category tag(s) to filter by
+ * @returns {Array} Filtered products
  */
-async function fetchCategoryFilteredProducts(path, categoryFilter = null) {
-  try {
-    if (!path) return [];
-
-    const baseUrl = isAuthorEnvironment()
-      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/categoryFilteredProductsLister;"
-      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/categoryFilteredProductsLister?";
-    
-    // Build URL with path and category parameters
-    let url = `${baseUrl}_path=${path}`;
-    if (categoryFilter) {
-      // Normalize category filter to comma-separated string
-      const categoryParam = Array.isArray(categoryFilter) 
-        ? categoryFilter.join(',') 
-        : categoryFilter;
-      url += `&category=${encodeURIComponent(categoryParam)}`;
+function filterByCategory(products, categoryFilter) {
+  if (!categoryFilter) return products;
+  
+  // Normalize category filter to array
+  const filterTags = Array.isArray(categoryFilter) 
+    ? categoryFilter 
+    : categoryFilter.split(',').map(t => t.trim()).filter(Boolean);
+  
+  if (filterTags.length === 0) return products;
+  
+  // Normalize filter tags for comparison (lowercase, remove namespace prefix)
+  const normalizedFilters = filterTags.map(tag => 
+    tag.toLowerCase().replace(/^[^:]+:/, '')
+  );
+  
+  // Filter products that have at least one matching category tag
+  return products.filter(product => {
+    if (!product.category || !Array.isArray(product.category)) {
+      return false;
     }
-
-    const resp = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-      },
-    });
-    const json = await resp.json();
-    const items = json?.data?.productsModelList?.items || [];
     
-    // No client-side filtering needed - GraphQL handles it
-    return items;
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error("Category Products Lister (Category Filtered): fetch error", e);
-    return [];
-  }
+    // Normalize product categories for comparison
+    const productCategories = product.category.map(cat => 
+      cat.toLowerCase().replace(/^[^:]+:/, '')
+    );
+    
+    // Check if any filter tag matches any product category
+    return normalizedFilters.some(filterTag => 
+      productCategories.some(prodCat => prodCat.includes(filterTag))
+    );
+  });
 }
 
 function renderHeader(container, selectedTags) {
@@ -213,14 +213,14 @@ export default async function decorate(block) {
   // Check if this is a legacy Luma3 demo (backward compatibility)
   const isLegacyLuma3 = folderHref && folderHref.includes('/dam/luma3/');
   
-  // Fetch products with appropriate method
+  // Fetch products from GraphQL
   let items;
   if (isLegacyLuma3) {
-    // Legacy Luma3: Use folder-based query without any filtering (backward compatibility)
-    items = await fetchLegacyProducts(folderHref);
+    // Legacy Luma3: folder-based, no tag filtering
+    items = await fetchProducts(folderHref, null);
   } else {
-    // New implementation: Use category-filtered query with backend filtering
-    items = await fetchCategoryFilteredProducts(folderHref, tags);
+    // New demos: fetch all products and apply client-side tag filtering
+    items = await fetchProducts(folderHref, tags);
   }
   if (!items || items.length === 0) {
     const empty = document.createElement("p");
