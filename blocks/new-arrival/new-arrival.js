@@ -92,7 +92,9 @@ function buildCard(item, isAuthor) {
     .replace(/\b\w/g, char => char.toUpperCase()); // Capitalize first letter of each word
   const title = document.createElement("h3");
   title.className = "na-card-title";
-  title.textContent = name || "";
+  // Split name by comma and take only the first part
+  const displayName = name ? name.split(',')[0].trim() : "";
+  title.textContent = displayName;
   meta.append(cat, title);
 
   card.append(imgWrap, meta);
