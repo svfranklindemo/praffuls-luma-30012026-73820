@@ -75,14 +75,21 @@ function buildCard(item, isAuthor) {
 
   const meta = document.createElement("div");
   meta.className = "na-card-meta";
-  const categoryText = category && category.length ? category.join(", ") : "";
+  // Clean category text: split by colon and keep only the part after the colon (remove demo ID prefix)
+  const cleanedCategories = category && category.length 
+    ? category.map(cat => {
+        const parts = cat.split(':');
+        return parts.length > 1 ? parts[1] : cat; // Take part after colon, or original if no colon
+      })
+    : [];
+  const categoryText = cleanedCategories.join(", ");
   const cat = document.createElement("p");
   cat.className = "na-card-category";
-  // Format category: remove "luma:" or "Lumaproducts:", replace commas with slashes, uppercase
+  // Format category: replace commas with slashes, capitalize first letter of each word
   cat.textContent = categoryText
-    .replace(/^(luma:|lumaproducts:)/gi, "") // Remove luma/lumaproducts prefix (case-insensitive)
-    .replace(/\//g, " / ") // Replace slashes with /
-    .toUpperCase(); // Convert to uppercase
+    .replace(/,/g, " /") // Replace commas with slashes
+    .toLowerCase() // Convert to lowercase first
+    .replace(/\b\w/g, char => char.toUpperCase()); // Capitalize first letter of each word
   const title = document.createElement("h3");
   title.className = "na-card-title";
   title.textContent = name || "";
