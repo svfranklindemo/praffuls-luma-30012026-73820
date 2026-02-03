@@ -88,8 +88,8 @@ async function fetchProducts(path, categoryFilter = null) {
     if (!path) return [];
 
     const baseUrl = isAuthorEnvironment()
-      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
-      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?";
+      ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
+      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&";
     const url = `${baseUrl}_path=${path}`;
 
     const resp = await fetch(url, {
