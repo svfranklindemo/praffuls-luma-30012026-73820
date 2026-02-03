@@ -2,9 +2,15 @@ import { readBlockConfig, createOptimizedPicture } from "../../scripts/aem.js";
 import { isAuthorEnvironment } from "../../scripts/scripts.js";
 
 function buildCard(item, isAuthor) {
-  const { id, sku, name, image = {}, category = [] } = item || {};
-  let imgUrl = isAuthor ? image?._authorUrl : image?._publishUrl;
+  const { id, sku, name, image, category = [] } = item || {};
   const productId = sku || id || "";
+  let imgUrl = null;
+  if (image && (image._authorUrl || image._publishUrl)) {
+    imgUrl = isAuthor ? image._authorUrl : image._publishUrl;
+  }
+  if (!imgUrl && id) {
+    imgUrl = `https://s7d1.scene7.com/is/image/VikasSaharanNA001/${id}?fmt=png-alpha&bfc=on&width=319`;
+  }
 
   const card = document.createElement("article");
   card.className = "na-card";
