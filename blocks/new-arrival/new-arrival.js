@@ -140,7 +140,7 @@ async function fetchProducts(path, isLegacy = false) {
       // New CF model: Use zoltarProductListByPath query
       baseUrl = isAuthorEnvironment()
         ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/zoltarProductListByPath;"
-        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&endpoint=zoltarProductListByPath&";
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/luma-zoltar?environment=p121371-e1189853&endpoint=zoltarProductListByPath&";
     }
     
     const url = `${baseUrl}_path=${path}`;
