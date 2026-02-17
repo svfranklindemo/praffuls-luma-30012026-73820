@@ -1,15 +1,30 @@
 import { readBlockConfig, createOptimizedPicture } from "../../scripts/aem.js";
 import { isAuthorEnvironment } from "../../scripts/scripts.js";
 
-function buildCard(item, isAuthor) {
-  const { id, sku, name, image, category = [] } = item || {};
+function buildCard(item, isAuthor, isLegacy = false) {
+  // Handle both legacy (image field) and new (externalImageURL/damImageURL) CF models
+  const { id, sku, name, image, externalImageURL, damImageURL, category = [] } = item || {};
   const productId = sku || id || "";
   let imgUrl = null;
-  if (image && (image._authorUrl || image._publishUrl)) {
-    imgUrl = isAuthor ? image._authorUrl : image._publishUrl;
-  }
-  if (!imgUrl && id) {
-    imgUrl = `https://s7d1.scene7.com/is/image/VikasSaharanNA001/${id}?fmt=png-alpha&bfc=on&width=319`;
+
+  if (isLegacy) {
+    // Legacy luma3: Use old image field (ImageRef)
+    if (image && (image._authorUrl || image._publishUrl)) {
+      imgUrl = isAuthor ? image._authorUrl : image._publishUrl;
+    }
+  } else {
+    // New CF model: Use externalImageURL and damImageURL
+    // Priority 1: externalImageURL (string or object with plaintext, e.g. blob URLs)
+    if (externalImageURL) {
+      imgUrl = typeof externalImageURL === "string"
+        ? externalImageURL
+        : externalImageURL.plaintext;
+    }
+
+    // Priority 2: Try damImageURL (DAM assets)
+    if (!imgUrl && damImageURL && (damImageURL._authorUrl || damImageURL._publishUrl)) {
+      imgUrl = isAuthor ? damImageURL._authorUrl : damImageURL._publishUrl;
+    }
   }
 
   const card = document.createElement("article");
@@ -57,8 +72,9 @@ function buildCard(item, isAuthor) {
   // Handle image display for author vs publish
   let picture = null;
   if (imgUrl) {
-    if (!isAuthor && imgUrl.startsWith("http")) {
-      // For publish with full URL, use it directly in an img tag
+    // Use direct img for full URLs (http/https) or blob URLs (e.g. externalImageURL from CF)
+    const useDirectImg = imgUrl.startsWith("http") || imgUrl.startsWith("blob:");
+    if (!isAuthor && useDirectImg) {
       picture = document.createElement("picture");
       const img = document.createElement("img");
       img.src = imgUrl;
@@ -83,10 +99,12 @@ function buildCard(item, isAuthor) {
   meta.className = "na-card-meta";
   // Clean category text: split by colon and keep only the part after the colon (remove demo ID prefix)
   const cleanedCategories = category && category.length 
-    ? category.map(cat => {
-        const parts = cat.split(':');
-        return parts.length > 1 ? parts[1] : cat; // Take part after colon, or original if no colon
-      })
+    ? category
+        .map((cat) => {
+          const parts = cat.split(":");
+          return parts.length > 1 ? parts[1] : cat; // Take part after colon, or original if no colon
+        })
+        .filter(Boolean) // Drop empty (e.g. "luma-products:" -> "")
     : [];
   const categoryText = cleanedCategories.join(", ");
   const cat = document.createElement("p");
@@ -107,13 +125,24 @@ function buildCard(item, isAuthor) {
   return card;
 }
 
-async function fetchProducts(path) {
+async function fetchProducts(path, isLegacy = false) {
   try {
     if (!path) return [];
-    // For AEM parameterized queries, use semicolon syntax: ;_path=value
-    const baseUrl = isAuthorEnvironment()
-      ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
-      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&";
+    
+    // Determine which GraphQL endpoint and query to use
+    let baseUrl;
+    if (isLegacy) {
+      // Legacy luma3: Use old endpoint with menproductspagelister query
+      baseUrl = isAuthorEnvironment()
+        ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&";
+    } else {
+      // New CF model: Use zoltarProductListByPath query
+      baseUrl = isAuthorEnvironment()
+        ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/zoltarProductListByPath;"
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&endpoint=zoltarProductListByPath&";
+    }
+    
     const url = `${baseUrl}_path=${path}`;
     const resp = await fetch(url, {
       method: "GET",
@@ -123,7 +152,11 @@ async function fetchProducts(path) {
       },
     });
     const json = await resp.json();
-    const items = json?.data?.productsModelList?.items || [];
+    // Support both response shapes: productsContentFragmentModelList (new CF) and productsModelList (legacy)
+    const items =
+      json?.data?.productsContentFragmentModelList?.items ||
+      json?.data?.productsModelList?.items ||
+      [];
     // Filter out null/invalid products
     return items.filter((item) => item && item.sku);
   } catch (e) {
@@ -490,6 +523,9 @@ export default async function decorate(block) {
   // Extract SKUs from multifield
   const skuList = extractSKUs(block, cfg);
 
+  // Check if this is a legacy luma3 demo (backward compatibility)
+  const isLegacyLuma3 = folderHref && folderHref.includes('/dam/luma3/');
+
   // Clear author table
   block.innerHTML = "";
 
@@ -502,13 +538,15 @@ export default async function decorate(block) {
   header.append(title);
   block.append(header);
 
-  // Fetch all products
-  const allProducts = await fetchProducts(folderHref);
+  // Fetch all products with appropriate endpoint
+  const allProducts = await fetchProducts(folderHref, isLegacyLuma3);
 
   // eslint-disable-next-line no-console
   console.log("New Arrival - All products fetched:", allProducts.length);
   // eslint-disable-next-line no-console
   console.log("New Arrival - Extracted SKUs:", skuList);
+  // eslint-disable-next-line no-console
+  console.log("New Arrival - Using legacy mode:", isLegacyLuma3);
 
   if (!allProducts || allProducts.length === 0) {
     const empty = document.createElement("p");
@@ -542,8 +580,8 @@ export default async function decorate(block) {
     return;
   }
 
-  // Build cards
-  const cards = filteredProducts.map((item) => buildCard(item, isAuthor));
+  // Build cards with appropriate field structure
+  const cards = filteredProducts.map((item) => buildCard(item, isAuthor, isLegacyLuma3));
 
   // Create carousel
   createCarousel(block, cards);
