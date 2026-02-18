@@ -135,12 +135,12 @@ async function fetchProducts(path, isLegacy = false) {
       // Legacy luma3: Use old endpoint with menproductspagelister query
       baseUrl = isAuthorEnvironment()
         ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
-        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&";
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p165802-e1765367&";
     } else {
       // New CF model: Use zoltarProductListByPath query
       baseUrl = isAuthorEnvironment()
         ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/zoltarProductListByPath;"
-        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/luma-zoltar?environment=p121371-e1189853&endpoint=zoltarProductListByPath&";
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/luma-zoltar?environment=p165802-e1765367&endpoint=zoltarProductListByPath&";
     }
     
     const url = `${baseUrl}_path=${path}`;
