@@ -47,11 +47,12 @@ function buildCard(item, isAuthor, isLegacy = false) {
     });
   }
 
-  // On publish, use direct img for full URLs (http/https) or blob URLs (e.g. externalImageURL from CF)
+  // Handle image display: external URLs (http/https/blob) are never optimized
   let picture = null;
   if (imgUrl) {
+    // Use direct img for external URLs so they are not optimized (e.g. livedemos.adobe.com, blob URLs)
     const useDirectImg = imgUrl.startsWith("http") || imgUrl.startsWith("blob:");
-    if (!isAuthor && useDirectImg) {
+    if (useDirectImg) {
       picture = document.createElement("picture");
       const img = document.createElement("img");
       img.src = imgUrl;
@@ -59,7 +60,7 @@ function buildCard(item, isAuthor, isLegacy = false) {
       img.loading = "lazy";
       picture.appendChild(img);
     } else {
-      // For author or relative paths, use createOptimizedPicture
+      // For author or relative paths only, use createOptimizedPicture
       picture = createOptimizedPicture(imgUrl, name || "Product image", false, [
         { media: "(min-width: 900px)", width: "600" },
         { media: "(min-width: 600px)", width: "400" },
