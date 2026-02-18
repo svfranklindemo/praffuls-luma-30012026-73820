@@ -16,20 +16,40 @@ function getQueryParam(param) {
  * @param {string} path - Content fragment folder path
  * @param {string} sku - Product SKU
  * @param {boolean} isAuthor - Is author environment
+ * @param {boolean} isLegacy - Use legacy luma3 endpoint/model
  * @returns {Promise<Object|null>} - Product data
  */
-async function fetchProductDetail(path, sku, isAuthor) {
+async function fetchProductDetail(path, sku, isAuthor, isLegacy = false) {
   try {
     if (!path || !sku) {
       // eslint-disable-next-line no-console
       console.error("Product Detail: Missing path or SKU");
       return null;
     }
-   const skuItem = isAuthor ? `;sku=${sku}` : `&sku=${sku}`;
+
+    if (isLegacy) {
+      const skuItem = isAuthor ? `;sku=${sku}` : `&sku=${sku}`;
+      const baseUrl = isAuthor
+        ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/getProductsByPathAndSKU;"
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p165802-e1765367&";
+      const url = `${baseUrl}_path=${path}${skuItem}`;
+      const resp = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+        },
+      });
+      const json = await resp.json();
+      const items = json?.data?.productsModelList?.items || [];
+      return items.length > 0 ? items[0] : null;
+    }
+
+    // New CF: fetch list by path then find by sku
     const baseUrl = isAuthor
-      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/getProductsByPathAndSKU;"
-      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGrapghQlByPathAndSku?";
-    const url = `${baseUrl}_path=${path}${skuItem}`;
+      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/zoltarProductListByPath;"
+      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/luma-zoltar?environment=p165802-e1765367&endpoint=zoltarProductListByPath&";
+    const url = `${baseUrl}_path=${path}`;
     const resp = await fetch(url, {
       method: "GET",
       headers: {
@@ -38,8 +58,12 @@ async function fetchProductDetail(path, sku, isAuthor) {
       },
     });
     const json = await resp.json();
-    const items = json?.data?.productsModelList?.items || [];
-    return items.length > 0 ? items[0] : null;
+    const items =
+      json?.data?.productsContentFragmentModelList?.items ||
+      json?.data?.productsModelList?.items ||
+      [];
+    const product = items.find((item) => (item.sku || item.id || "").toString() === sku.toString());
+    return product || null;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("Product Detail: fetch error", e);
@@ -51,16 +75,23 @@ async function fetchProductDetail(path, sku, isAuthor) {
  * Fetch all products from a folder
  * @param {string} path - Content fragment folder path
  * @param {boolean} isAuthor - Is author environment
+ * @param {boolean} isLegacy - Use legacy luma3 endpoint/model
  * @returns {Promise<Array>} - Array of products
  */
-async function fetchAllProducts(path, isAuthor) {
+async function fetchAllProducts(path, isAuthor, isLegacy = false) {
   try {
-    if (!path) {
-      return [];
+    if (!path) return [];
+
+    let baseUrl;
+    if (isLegacy) {
+      baseUrl = isAuthor
+        ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p121371-e1189853&";
+    } else {
+      baseUrl = isAuthor
+        ? "https://author-p121371-e1189853.adobeaemcloud.com/graphql/execute.json/luma3/zoltarProductListByPath;"
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/luma-zoltar?environment=p121371-e1189853&endpoint=zoltarProductListByPath&";
     }
-        const baseUrl = isAuthor
-      ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/menproductspagelister;"
-      : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?";
     const url = `${baseUrl}_path=${path}`;
     const resp = await fetch(url, {
       method: "GET",
@@ -70,9 +101,11 @@ async function fetchAllProducts(path, isAuthor) {
       },
     });
     const json = await resp.json();
-    const items = json?.data?.productsModelList?.items || [];
-    const filtered = items.filter((item) => item && item.sku);
-    return filtered;
+    const items =
+      json?.data?.productsContentFragmentModelList?.items ||
+      json?.data?.productsModelList?.items ||
+      [];
+    return items.filter((item) => item && (item.sku || item.id));
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("Product Detail: fetch all products error", e);
@@ -81,29 +114,53 @@ async function fetchAllProducts(path, isAuthor) {
 }
 
 /**
- * Build a recommendation card (similar to new-arrival.js)
+ * Resolve image URL from product (legacy image vs new externalImageURL/damImageURL)
  * @param {Object} item - Product data
  * @param {boolean} isAuthor - Is author environment
+ * @param {boolean} isLegacy - Legacy CF model
+ * @returns {string|null} - Image URL
+ */
+function getProductImageUrl(item, isAuthor, isLegacy = false) {
+  if (!item) return null;
+  const { image, externalImageURL, damImageURL } = item;
+  if (isLegacy) {
+    if (image && (image._authorUrl || image._publishUrl)) {
+      return isAuthor ? image._authorUrl : image._publishUrl;
+    }
+    return null;
+  }
+  if (externalImageURL) {
+    const url = typeof externalImageURL === "string"
+      ? externalImageURL
+      : externalImageURL.plaintext;
+    if (url) return url;
+  }
+  if (damImageURL && (damImageURL._authorUrl || damImageURL._publishUrl)) {
+    return isAuthor ? damImageURL._authorUrl : damImageURL._publishUrl;
+  }
+  return null;
+}
+
+/**
+ * Build a recommendation card (aligned with new-arrival / category-products-lister)
+ * @param {Object} item - Product data
+ * @param {boolean} isAuthor - Is author environment
+ * @param {boolean} isLegacy - Legacy CF model
  * @returns {HTMLElement} - Product card
  */
-function buildRecommendationCard(item, isAuthor) {
-  const { id, sku, name, image = {}, category = [] } = item || {};
-  let imgUrl = isAuthor ? image?._authorUrl : image?._publishUrl;
+function buildRecommendationCard(item, isAuthor, isLegacy = false) {
+  const { id, sku, name, category = [] } = item || {};
+  const imgUrl = getProductImageUrl(item, isAuthor, isLegacy);
   const productId = sku || id || "";
 
   const card = document.createElement("article");
   card.className = "pd-rec-card";
 
-  // Make card clickable and redirect to product page
   if (productId) {
     card.style.cursor = "pointer";
     card.addEventListener("click", () => {
       const currentPath = window.location.pathname;
-
-      // Smart path construction: ensure we navigate to the correct product page
       let basePath = currentPath.substring(0, currentPath.lastIndexOf("/"));
-
-      // If the current page doesn't have a language segment, try to add it
       const langPattern = /\/(en|fr|de|es|it|ja|zh|pt|nl|sv|da|no|fi)$/;
       if (!langPattern.test(basePath) && !basePath.includes("/en/")) {
         const pathMatch = currentPath.match(
@@ -117,8 +174,6 @@ function buildRecommendationCard(item, isAuthor) {
           basePath = `${basePath}/en`;
         }
       }
-
-      // On author add .html extension, on publish don't
       const productPath = isAuthor
         ? `${basePath}/product.html`
         : `${basePath}/product`;
@@ -128,10 +183,11 @@ function buildRecommendationCard(item, isAuthor) {
     });
   }
 
-  // Handle image display for author vs publish
+  // External URLs (http/https/blob) are never optimized
   let picture = null;
   if (imgUrl) {
-    if (!isAuthor && imgUrl.startsWith("http")) {
+    const useDirectImg = imgUrl.startsWith("http") || imgUrl.startsWith("blob:");
+    if (useDirectImg) {
       picture = document.createElement("picture");
       const img = document.createElement("img");
       img.src = imgUrl;
@@ -153,17 +209,25 @@ function buildRecommendationCard(item, isAuthor) {
 
   const meta = document.createElement("div");
   meta.className = "pd-rec-card-meta";
-  const categoryText = category && category.length ? category.join(", ") : "";
+  const cleanedCategories = category && category.length
+    ? category
+        .map((cat) => {
+          const parts = cat.split(":");
+          return parts.length > 1 ? parts[1] : cat;
+        })
+        .filter(Boolean)
+    : [];
+  const categoryText = cleanedCategories.join(", ");
   const cat = document.createElement("p");
   cat.className = "pd-rec-card-category";
-  // Format category: remove "luma:" or "Lumaproducts:", replace commas with slashes, uppercase
   cat.textContent = categoryText
-    .replace(/^(luma:|lumaproducts:)/gi, "") // Remove luma/lumaproducts prefix (case-insensitive)
-    .replace(/\//g, " / ") // Replace slashes with /
-    .toUpperCase(); // Convert to uppercase
+    .replace(/,/g, " /")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
   const title = document.createElement("h3");
   title.className = "pd-rec-card-title";
-  title.textContent = name || "";
+  const displayName = name ? name.split(",")[0].trim() : "";
+  title.textContent = displayName;
   meta.append(cat, title);
 
   card.append(imgWrap, meta);
@@ -171,38 +235,54 @@ function buildRecommendationCard(item, isAuthor) {
 }
 
 /**
- * Build product detail view
+ * Format category array: split by colon (remove demo ID), title case
+ * @param {Array} category - Category array
+ * @returns {string} - Formatted category string
+ */
+function formatCategoryDisplay(category) {
+  if (!category || category.length === 0) return "";
+  const cleaned = category
+    .map((cat) => {
+      const parts = cat.split(":");
+      return parts.length > 1 ? parts[1] : cat;
+    })
+    .filter(Boolean);
+  return cleaned
+    .join(", ")
+    .replace(/,/g, " /")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/**
+ * Build product detail view (aligned with new-arrival / category-products-lister)
  * @param {Object} product - Product data
  * @param {boolean} isAuthor - Is author environment
+ * @param {boolean} isLegacy - Legacy CF model
  * @returns {HTMLElement} - Product detail container
  */
-function buildProductDetail(product, isAuthor) {
+function buildProductDetail(product, isAuthor, isLegacy = false) {
   const {
     name,
     price,
     category = [],
     description = {},
-    image = {},
     sku,
     id,
   } = product;
 
-  // Update dataLayer with product information
-  // If dataLayer is not ready, the update will be queued automatically
-  const imageUrl = isAuthor ? image?._authorUrl : image?._publishUrl;
+  const imageUrl = getProductImageUrl(product, isAuthor, isLegacy);
+  const displayName = name ? name.split(",")[0].trim() : "";
+  const formattedCategory = formatCategoryDisplay(category);
+  const descriptionText = description?.html || description?.markdown || description?.plaintext || "";
 
   const productData = {
     id: id || sku || "",
     sku: sku || "",
-    name: name || "",
+    name: displayName || name || "",
     price: price || 0,
-    category:
-      category.length > 0
-        ? category
-            .map((cat) => cat.replace(/^luma:/, "").replace(/\//g, " / "))
-            .join(", ")
-        : "",
-    description: description?.html || description?.markdown || "",
+    category: formattedCategory,
+    description: descriptionText,
     image: imageUrl || "",
     thumbnail: imageUrl || "",
   };
@@ -219,24 +299,21 @@ function buildProductDetail(product, isAuthor) {
   const container = document.createElement("div");
   container.className = "pd-container";
 
-  // Image section
   const imageSection = document.createElement("div");
   imageSection.className = "pd-image";
 
-  const imgUrl = isAuthor ? image?._authorUrl : image?._publishUrl;
-  if (imgUrl) {
+  if (imageUrl) {
+    const useDirectImg = imageUrl.startsWith("http") || imageUrl.startsWith("blob:");
     let picture = null;
-    if (!isAuthor && imgUrl.startsWith("http")) {
-      // For publish with full URL, use it directly
+    if (useDirectImg) {
       picture = document.createElement("picture");
       const img = document.createElement("img");
-      img.src = imgUrl;
+      img.src = imageUrl;
       img.alt = name || "Product image";
       img.loading = "eager";
       picture.appendChild(img);
     } else {
-      // For author or relative paths, use createOptimizedPicture
-      picture = createOptimizedPicture(imgUrl, name || "Product image", true, [
+      picture = createOptimizedPicture(imageUrl, name || "Product image", true, [
         { media: "(min-width: 900px)", width: "800" },
         { media: "(min-width: 600px)", width: "600" },
         { width: "400" },
@@ -245,31 +322,19 @@ function buildProductDetail(product, isAuthor) {
     if (picture) imageSection.appendChild(picture);
   }
 
-  // Content section
   const contentSection = document.createElement("div");
   contentSection.className = "pd-content";
 
-  // Category
-  if (category && category.length > 0) {
-    const categoryText = category
-      .map(
-        (cat) =>
-          cat
-            .replace(/^(luma:|lumaproducts:)/gi, "") // Remove luma/lumaproducts prefix (case-insensitive)
-            .replace(/\//g, " / ") // Replace slashes with /
-      )
-      .join(" / ")
-      .toUpperCase();
+  if (formattedCategory) {
     const categoryEl = document.createElement("p");
     categoryEl.className = "pd-category";
-    categoryEl.textContent = categoryText;
+    categoryEl.textContent = formattedCategory;
     contentSection.appendChild(categoryEl);
   }
 
-  // Name
   const nameEl = document.createElement("h1");
   nameEl.className = "pd-name";
-  nameEl.textContent = name || "";
+  nameEl.textContent = displayName || name || "";
   contentSection.appendChild(nameEl);
 
   // Price
@@ -280,11 +345,17 @@ function buildProductDetail(product, isAuthor) {
     contentSection.appendChild(priceEl);
   }
 
-  // Description (using HTML format)
-  if (description?.html) {
+  // Description (html, markdown, or plaintext)
+  if (descriptionText) {
     const descEl = document.createElement("div");
     descEl.className = "pd-description";
-    descEl.innerHTML = description.html;
+    if (description?.html) {
+      descEl.innerHTML = description.html;
+    } else if (description?.markdown) {
+      descEl.textContent = description.markdown;
+    } else {
+      descEl.textContent = description.plaintext || descriptionText;
+    }
     contentSection.appendChild(descEl);
   }
 
@@ -297,22 +368,13 @@ function buildProductDetail(product, isAuthor) {
   addToCartBtn.textContent = "Add to Cart";
   addToCartBtn.setAttribute("aria-label", `Add ${name} to cart`);
   addToCartBtn.addEventListener("click", () => {
-    const imageUrl = isAuthor ? image?._authorUrl : image?._publishUrl;
-    const formattedCategory =
-      category.length > 0
-        ? category
-            .map((cat) => cat.replace(/^luma:/, "").replace(/\//g, " / "))
-            .join(", ")
-        : "";
-
-    // Use the global addToCart function (handles queuing automatically)
     window.addToCart({
       id: id || sku || "",
-      name: name || "",
+      name: displayName || name || "",
       image: imageUrl || "",
       thumbnail: imageUrl || "",
       category: formattedCategory,
-      description: description?.html || description?.markdown || "",
+      description: descriptionText,
       price: price || 0,
       quantity: 1,
     });
@@ -344,49 +406,38 @@ function buildProductDetail(product, isAuthor) {
  * @param {Object} currentProduct - Current product data
  * @param {Array} allProducts - All products from the folder
  * @param {boolean} isAuthor - Is author environment
+ * @param {boolean} isLegacy - Legacy CF model
  * @returns {HTMLElement|null} - Recommendations section or null
  */
-function buildRecommendations(currentProduct, allProducts, isAuthor) {
-  const { sku: currentSku, category: currentCategories = [] } = currentProduct;
+function buildRecommendations(currentProduct, allProducts, isAuthor, isLegacy = false) {
+  const { sku: currentSku, id: currentId, category: currentCategories = [] } = currentProduct;
 
-  if (!currentCategories || currentCategories.length === 0) {
-    return null;
-  }
+  if (!currentCategories || currentCategories.length === 0) return null;
 
-  // Filter products by matching category
-  const recommendations = allProducts
+  const normalizeCat = (cat) => (typeof cat === "string" ? cat.toLowerCase().replace(/^[^:]+:/, "") : "");
+  const currentNorm = currentCategories.map(normalizeCat).filter(Boolean);
+
+  const recs = allProducts
     .filter((product) => {
-      // Exclude current product
-      if (product.sku === currentSku) return false;
-
-      // Check if product has any matching category
-      const productCategories = product.category || [];
-      return productCategories.some((cat) => currentCategories.includes(cat));
+      if ((product.sku || product.id) === (currentSku || currentId)) return false;
+      const productCategories = (product.category || []).map(normalizeCat).filter(Boolean);
+      return currentNorm.some((c) => productCategories.includes(c));
     })
-    .slice(0, 5); // Limit to 5 products
+    .slice(0, 5);
 
-  if (recommendations.length === 0) {
-    return null;
-  }
+  if (recs.length === 0) return null;
 
-  // Build recommendations section
   const section = document.createElement("div");
   section.className = "pd-recommendations";
-
   const title = document.createElement("h2");
   title.className = "pd-rec-title";
   title.textContent = "YOU MAY ALSO LIKE";
-
   const grid = document.createElement("div");
   grid.className = "pd-rec-grid";
-
-  recommendations.forEach((product) => {
-    const card = buildRecommendationCard(product, isAuthor);
-    grid.append(card);
+  recs.forEach((product) => {
+    grid.append(buildRecommendationCard(product, isAuthor, isLegacy));
   });
-
   section.append(title, grid);
-
   return section;
 }
 
@@ -397,22 +448,26 @@ function buildRecommendations(currentProduct, allProducts, isAuthor) {
 export default async function decorate(block) {
   const isAuthor = isAuthorEnvironment();
 
-  // Extract folder path from block config
   let folderHref = "";
   const link = block.querySelector("a[href]");
   if (link) {
-    folderHref = link.getAttribute("href");
+    folderHref = link.getAttribute("href") || "";
   } else {
     const config = readBlockConfig(block);
-    folderHref = config.folder || "";
+    folderHref = config?.folder || "";
   }
 
-  // Strip .html extension if present
+  if (folderHref && folderHref.startsWith("http")) {
+    try {
+      const u = new URL(folderHref);
+      folderHref = u.pathname;
+    } catch (e) { /* ignore */ }
+  }
   if (folderHref && folderHref.endsWith(".html")) {
     folderHref = folderHref.replace(/\.html$/, "");
   }
 
-  // Get SKU from URL query parameter
+  const isLegacyLuma3 = folderHref && folderHref.includes("/dam/luma3/");
   const sku = getQueryParam("productId");
 
   // Clear block content
@@ -441,10 +496,9 @@ export default async function decorate(block) {
   loader.textContent = "Loading product details...";
   block.appendChild(loader);
 
-  // Fetch product and all products in parallel
   const [product, allProducts] = await Promise.all([
-    fetchProductDetail(folderHref, sku, isAuthor),
-    fetchAllProducts(folderHref, isAuthor),
+    fetchProductDetail(folderHref, sku, isAuthor, isLegacyLuma3),
+    fetchAllProducts(folderHref, isAuthor, isLegacyLuma3),
   ]);
 
   block.textContent = "";
@@ -457,12 +511,10 @@ export default async function decorate(block) {
     return;
   }
 
-  // Display product detail
-  const productDetail = buildProductDetail(product, isAuthor);
+  const productDetail = buildProductDetail(product, isAuthor, isLegacyLuma3);
   block.appendChild(productDetail);
 
-  // Display recommendations
-  const recommendations = buildRecommendations(product, allProducts, isAuthor);
+  const recommendations = buildRecommendations(product, allProducts, isAuthor, isLegacyLuma3);
   if (recommendations) {
     block.appendChild(recommendations);
   }
