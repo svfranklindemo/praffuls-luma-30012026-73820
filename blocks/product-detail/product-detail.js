@@ -31,7 +31,7 @@ async function fetchProductDetail(path, sku, isAuthor, isLegacy = false) {
       const skuItem = isAuthor ? `;sku=${sku}` : `&sku=${sku}`;
       const baseUrl = isAuthor
         ? "https://author-p165802-e1765367.adobeaemcloud.com/graphql/execute.json/luma3/getProductsByPathAndSKU;"
-        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGraphQl?environment=p165802-e1765367&";
+        : "https://275323-918sangriatortoise.adobeioruntime.net/api/v1/web/dx-excshell-1/lumaProductsGrapghQlByPathAndSku?environment=p165802-e1765367&";
       const url = `${baseUrl}_path=${path}${skuItem}`;
       const resp = await fetch(url, {
         method: "GET",
