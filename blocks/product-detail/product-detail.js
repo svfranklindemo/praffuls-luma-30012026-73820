@@ -183,10 +183,10 @@ function buildRecommendationCard(item, isAuthor, isLegacy = false) {
     });
   }
 
-  // External URLs (http/https/blob) are never optimized
+  // External URLs (http/https) are never optimized
   let picture = null;
   if (imgUrl) {
-    const useDirectImg = imgUrl.startsWith("http") || imgUrl.startsWith("blob:");
+    const useDirectImg = imgUrl.startsWith("http");
     if (useDirectImg) {
       picture = document.createElement("picture");
       const img = document.createElement("img");
@@ -303,7 +303,7 @@ function buildProductDetail(product, isAuthor, isLegacy = false) {
   imageSection.className = "pd-image";
 
   if (imageUrl) {
-    const useDirectImg = imageUrl.startsWith("http") || imageUrl.startsWith("blob:");
+    const useDirectImg = imageUrl.startsWith("http");
     let picture = null;
     if (useDirectImg) {
       picture = document.createElement("picture");

@@ -14,7 +14,7 @@ function buildCard(item, isAuthor, isLegacy = false) {
     }
   } else {
     // New CF model: Use externalImageURL and damImageURL
-    // Priority 1: externalImageURL (string or object with plaintext, e.g. blob URLs)
+    // Priority 1: externalImageURL (string or object with plaintext)
     if (externalImageURL) {
       imgUrl = typeof externalImageURL === "string"
         ? externalImageURL
@@ -69,11 +69,10 @@ function buildCard(item, isAuthor, isLegacy = false) {
     });
   }
 
-  // Handle image display: external URLs (http/https/blob) are never optimized
+  // Handle image display: external URLs (http/https) are never optimized
   let picture = null;
   if (imgUrl) {
-    // Use direct img for external URLs so they are not optimized (e.g. livedemos.adobe.com, blob URLs)
-    const useDirectImg = imgUrl.startsWith("http") || imgUrl.startsWith("blob:");
+    const useDirectImg = imgUrl.startsWith("http");
     if (useDirectImg) {
       picture = document.createElement("picture");
       const img = document.createElement("img");
